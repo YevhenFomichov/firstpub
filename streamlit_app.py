@@ -5,7 +5,7 @@ from tensorflow.keras.models import load_model
 import soundfile as sf
 
 # Загрузка обученной модели
-model_dir = 'artifacts/model/'
+model_dir = 'artifacts/model/data/model.keras'
 model = tf.keras.models.load_model(model_dir)
 
 # Определение функций для обработки аудиофайлов и извлечения признаков
