@@ -34,10 +34,10 @@ def extract_features(audio, sample_rate, frame_length, feature_type, num_mfcc_fe
     return features
 
 # Приложение Streamlit
-st.title('Приложение для предсказания на основе аудио')
+st.title('Flow prediction')
 
 # Загрузка аудиофайла
-uploaded_file = st.file_uploader('Загрузите аудиофайл', type=['wav'])
+uploaded_file = st.file_uploader('Drop wav audio', type=['wav'])
 
 if uploaded_file is not None:
     # Загрузка аудиофайла
@@ -51,5 +51,5 @@ if uploaded_file is not None:
     predictions = model.predict(features).flatten()
 
     # Отображение предсказаний
-    st.write('Предсказанные значения:')
+    st.write('Predicted values:')
     st.write(predictions)
