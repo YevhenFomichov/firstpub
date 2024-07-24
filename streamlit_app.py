@@ -1,151 +1,55 @@
 import streamlit as st
-import pandas as pd
-import math
-from pathlib import Path
+import numpy as np
+import librosa
+from tensorflow.keras.models import load_model
+import soundfile as sf
 
-# Set the title and favicon that appear in the Browser's tab bar.
-st.set_page_config(
-    page_title='GDP dashboard',
-    page_icon=':earth_americas:', # This is an emoji shortcode. Could be a URL too.
-)
+# Загрузка обученной модели
+model = load_model('artifacts/model/model.keras')
 
-# -----------------------------------------------------------------------------
-# Declare some useful functions.
+# Определение функций для обработки аудиофайлов и извлечения признаков
+def extract_features(audio, sample_rate, frame_length, feature_type, num_mfcc_features):
+    samples_per_frame = int(sample_rate * frame_length)
+    total_frames = int(len(audio) / samples_per_frame)
+    features = []
 
-@st.cache_data
-def get_gdp_data():
-    """Grab GDP data from a CSV file.
+    for i in range(total_frames):
+        start_idx = i * samples_per_frame
+        end_idx = start_idx + samples_per_frame
+        frame = audio[start_idx:end_idx]
 
-    This uses caching to avoid having to read the file every time. If we were
-    reading from an HTTP endpoint instead of a file, it's a good idea to set
-    a maximum age to the cache with the TTL argument: @st.cache_data(ttl='1d')
-    """
+        if feature_type == 'mfcc':
+            feature = librosa.feature.mfcc(y=frame, sr=sample_rate, n_mfcc=num_mfcc_features).T
+        elif feature_type == 'raw':
+            feature = frame.reshape(-1, 1)  # Переформатирование для согласованности с (длина последовательности, количество признаков)
+        features.append(feature)
 
-    # Instead of a CSV on disk, you could read from an HTTP endpoint here too.
-    DATA_FILENAME = Path(__file__).parent/'data/gdp_data.csv'
-    raw_gdp_df = pd.read_csv(DATA_FILENAME)
+    features = np.array(features)
+    # Если используется сырой аудио, дополняем последовательности до одинаковой длины
+    if feature_type == 'raw':
+        max_length = max(len(f) for f in features)
+        features = np.array([np.pad(f, ((0, max_length - len(f)), (0, 0)), 'constant') for f in features])
+        features = np.expand_dims(features, -1)  # Добавляем измерение для количества признаков
 
-    MIN_YEAR = 1960
-    MAX_YEAR = 2022
+    return features
 
-    # The data above has columns like:
-    # - Country Name
-    # - Country Code
-    # - [Stuff I don't care about]
-    # - GDP for 1960
-    # - GDP for 1961
-    # - GDP for 1962
-    # - ...
-    # - GDP for 2022
-    #
-    # ...but I want this instead:
-    # - Country Name
-    # - Country Code
-    # - Year
-    # - GDP
-    #
-    # So let's pivot all those year-columns into two: Year and GDP
-    gdp_df = raw_gdp_df.melt(
-        ['Country Code'],
-        [str(x) for x in range(MIN_YEAR, MAX_YEAR + 1)],
-        'Year',
-        'GDP',
-    )
+# Приложение Streamlit
+st.title('Приложение для предсказания на основе аудио')
 
-    # Convert years from string to integers
-    gdp_df['Year'] = pd.to_numeric(gdp_df['Year'])
+# Загрузка аудиофайла
+uploaded_file = st.file_uploader('Загрузите аудиофайл', type=['wav'])
 
-    return gdp_df
+if uploaded_file is not None:
+    # Загрузка аудиофайла
+    audio, sample_rate = librosa.load(uploaded_file, sr=44100)
+    st.audio(uploaded_file, format='audio/wav')
 
-gdp_df = get_gdp_data()
+    # Извлечение признаков
+    features = extract_features(audio, sample_rate, frame_length=0.05, feature_type='raw', num_mfcc_features=13)
 
-# -----------------------------------------------------------------------------
-# Draw the actual page
+    # Выполнение предсказаний
+    predictions = model.predict(features).flatten()
 
-# Set the title that appears at the top of the page.
-'''
-# :earth_americas: GDP dashboard
-
-Browse GDP data from the [World Bank Open Data](https://data.worldbank.org/) website. As you'll
-notice, the data only goes to 2022 right now, and datapoints for certain years are often missing.
-But it's otherwise a great (and did I mention _free_?) source of data.
-'''
-
-# Add some spacing
-''
-''
-
-min_value = gdp_df['Year'].min()
-max_value = gdp_df['Year'].max()
-
-from_year, to_year = st.slider(
-    'Which years are you interested in?',
-    min_value=min_value,
-    max_value=max_value,
-    value=[min_value, max_value])
-
-countries = gdp_df['Country Code'].unique()
-
-if not len(countries):
-    st.warning("Select at least one country")
-
-selected_countries = st.multiselect(
-    'Which countries would you like to view?',
-    countries,
-    ['DEU', 'FRA', 'GBR', 'BRA', 'MEX', 'JPN'])
-
-''
-''
-''
-
-# Filter the data
-filtered_gdp_df = gdp_df[
-    (gdp_df['Country Code'].isin(selected_countries))
-    & (gdp_df['Year'] <= to_year)
-    & (from_year <= gdp_df['Year'])
-]
-
-st.header('GDP over time', divider='gray')
-
-''
-
-st.line_chart(
-    filtered_gdp_df,
-    x='Year',
-    y='GDP',
-    color='Country Code',
-)
-
-''
-''
-
-
-first_year = gdp_df[gdp_df['Year'] == from_year]
-last_year = gdp_df[gdp_df['Year'] == to_year]
-
-st.header(f'GDP in {to_year}', divider='gray')
-
-''
-
-cols = st.columns(4)
-
-for i, country in enumerate(selected_countries):
-    col = cols[i % len(cols)]
-
-    with col:
-        first_gdp = first_year[gdp_df['Country Code'] == country]['GDP'].iat[0] / 1000000000
-        last_gdp = last_year[gdp_df['Country Code'] == country]['GDP'].iat[0] / 1000000000
-
-        if math.isnan(first_gdp):
-            growth = 'n/a'
-            delta_color = 'off'
-        else:
-            growth = f'{last_gdp / first_gdp:,.2f}x'
-            delta_color = 'normal'
-
-        st.metric(
-            label=f'{country} GDP',
-            value=f'{last_gdp:,.0f}B',
-            delta=growth,
-            delta_color=delta_color
-        )
+    # Отображение предсказаний
+    st.write('Предсказанные значения:')
+    st.write(predictions)
