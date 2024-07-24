@@ -1,6 +1,7 @@
 streamlit
 numpy
 librosa
-tensorflow
+tensorflow==2.9.0
 soundfile
 matplotlib
+
