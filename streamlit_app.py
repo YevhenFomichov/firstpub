@@ -56,10 +56,10 @@ if uploaded_file is not None:
     average_value = np.mean(predictions)
 
     fig, ax = plt.subplots()
-    ax.plot(time_axis, predictions, label='Predicted Flow Rate')
-    ax.axhline(y=average_value, color='r', linestyle='--', label='Average Flow Rate')
+    ax.plot(time_axis, predictions, label='Predicted Flow Rate L/min')
+    ax.axhline(y=average_value, color='r', linestyle='--', label='Average Flow Rate L/min')
     ax.set_xlabel('Time (s)')
-    ax.set_ylabel('Flow Rate')
+    ax.set_ylabel('Flow Rate L/min')
     ax.legend()
 
     st.pyplot(fig)
